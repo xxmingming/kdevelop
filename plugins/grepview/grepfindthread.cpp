@@ -36,11 +36,8 @@ static bool isInDirectory(const QUrl& url, const QUrl& dir, int maxDepth)
     return false;
 }
 
-// the abort parameter must be volatile so that it
-// is evaluated every time - optimization might prevent that
-
 static QList<QUrl> thread_getProjectFiles(const QUrl& dir, int depth, const QStringList& include,
-                                         const QStringList& exlude, volatile bool &abort)
+                                         const QStringList& exlude, const std::atomic<bool>& abort)
 {
     ///@todo This is not thread-safe!
     KDevelop::IProject *project = KDevelop::ICore::self()->projectController()->findProjectForUrl( dir );
@@ -50,7 +47,7 @@ static QList<QUrl> thread_getProjectFiles(const QUrl& dir, int depth, const QStr
 
     const QSet<IndexedString> fileSet = project->fileSet();
     for (const IndexedString& item : fileSet) {
-        if(abort)
+        if (abort.load(std::memory_order_relaxed))
             break;
         QUrl url = item.toUrl();
         if( url != dir )
@@ -78,7 +75,7 @@ static QList<QUrl> thread_getProjectFiles(const QUrl& dir, int depth, const QStr
 }
 
 static QList<QUrl> thread_findFiles(const QDir& dir, int depth, const QStringList& include,
-                                   const QStringList& exclude, volatile bool &abort)
+                                   const QStringList& exclude, const std::atomic<bool>& abort)
 {
     QFileInfoList infos = dir.entryInfoList(include, QDir::NoDotAndDotDot|QDir::Files|QDir::Readable|QDir::Hidden);
 
@@ -96,7 +93,7 @@ static QList<QUrl> thread_findFiles(const QDir& dir, int depth, const QStringLis
         constexpr QDir::Filters dirFilter = QDir::NoDotAndDotDot|QDir::AllDirs|QDir::Readable|QDir::NoSymLinks|QDir::Hidden;
         const auto dirs = dir.entryInfoList(QStringList(), dirFilter);
         for (const QFileInfo& currDir : dirs) {
-            if(abort)
+            if (abort.load(std::memory_order_relaxed))
                 break;
             QString canonical = currDir.canonicalFilePath();
             if (!canonical.startsWith(dir.canonicalPath()))
@@ -130,12 +127,12 @@ GrepFindFilesThread::GrepFindFilesThread(QObject* parent,
 
 void GrepFindFilesThread::tryAbort()
 {
-    m_tryAbort = true;
+    m_tryAbort.store(true, std::memory_order_relaxed);
 }
 
 bool GrepFindFilesThread::triesToAbort() const
 {
-    return m_tryAbort;
+    return m_tryAbort.load(std::memory_order_relaxed);
 }
 
 void GrepFindFilesThread::run()
