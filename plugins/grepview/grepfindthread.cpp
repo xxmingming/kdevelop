@@ -14,6 +14,7 @@
 #include <util/wildcardhelpers.h>
 
 #include <algorithm>
+#include <utility>
 
 using KDevelop::IndexedString;
 
@@ -154,11 +155,12 @@ void GrepFindFilesThread::run()
     }
 }
 
-QList<QUrl> GrepFindFilesThread::files() const {
-    auto tmpList = m_files;
-    std::sort(tmpList.begin(), tmpList.end());
-    tmpList.erase(std::unique(tmpList.begin(), tmpList.end()), tmpList.end());
-    return tmpList;
+QList<QUrl> GrepFindFilesThread::extractFiles()
+{
+    Q_ASSERT(isFinished());
+    std::sort(m_files.begin(), m_files.end());
+    m_files.erase(std::unique(m_files.begin(), m_files.end()), m_files.end());
+    return std::move(m_files);
 }
 
 QStringList GrepFindFilesThread::parseExclude(const QString& excl)
